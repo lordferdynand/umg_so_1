@@ -152,6 +152,46 @@ static void mostrar_cola(const ColaProcesos *cola)
     printf("\n");
 }
 
+static int seleccionar_lote(const ConfiguracionSistema *configuracion,
+                            ColaProcesos *cola,
+                            Proceso *lote,
+                            size_t capacidad,
+                            size_t *cantidad_lote,
+                            int *hilos_usados)
+{
+    size_t pendientes = cola->cantidad;
+    size_t procesados = 0;
+    size_t seleccionados = 0;
+    int hilos_disponibles = configuracion->hilos;
+
+    while (procesados < pendientes) {
+        Proceso candidato;
+        int puede_ejecutarse;
+
+        if (!cola_desencolar(cola, &candidato)) {
+            fprintf(stderr, "Error interno: no se pudo retirar un proceso.\n");
+            return 0;
+        }
+
+        puede_ejecutarse = seleccionados < capacidad &&
+                           candidato.hilos <= hilos_disponibles;
+        if (puede_ejecutarse) {
+            lote[seleccionados] = candidato;
+            seleccionados++;
+            hilos_disponibles -= candidato.hilos;
+        } else if (!cola_encolar(cola, candidato)) {
+            fprintf(stderr, "Error: no se pudo conservar un proceso en la cola.\n");
+            return 0;
+        }
+
+        procesados++;
+    }
+
+    *cantidad_lote = seleccionados;
+    *hilos_usados = configuracion->hilos - hilos_disponibles;
+    return seleccionados > 0;
+}
+
 static int simular(const ConfiguracionSistema *configuracion, ColaProcesos *cola)
 {
     long long tiempo_cpu = 0;
@@ -159,14 +199,11 @@ static int simular(const ConfiguracionSistema *configuracion, ColaProcesos *cola
 
     while (!cola_esta_vacia(cola)) {
         Proceso *lote;
-        size_t cantidad_lote = cola->cantidad;
+        size_t cantidad_lote;
         size_t indice;
+        int hilos_usados;
 
-        if (cantidad_lote > (size_t)configuracion->procesadores) {
-            cantidad_lote = (size_t)configuracion->procesadores;
-        }
-
-        lote = malloc(cantidad_lote * sizeof(*lote));
+        lote = malloc((size_t)configuracion->procesadores * sizeof(*lote));
         if (lote == NULL) {
             fprintf(stderr, "Error: no se pudo reservar memoria para un ciclo.\n");
             return 0;
@@ -176,22 +213,30 @@ static int simular(const ConfiguracionSistema *configuracion, ColaProcesos *cola
         printf("\n--- Ciclo %d ---\n", ciclo);
         mostrar_cola(cola);
 
-        for (indice = 0; indice < cantidad_lote; indice++) {
-            if (!cola_desencolar(cola, &lote[indice])) {
-                free(lote);
-                fprintf(stderr, "Error interno: no se pudo retirar un proceso.\n");
-                return 0;
-            }
+        if (!seleccionar_lote(configuracion,
+                              cola,
+                              lote,
+                              (size_t)configuracion->procesadores,
+                              &cantidad_lote,
+                              &hilos_usados)) {
+            free(lote);
+            fprintf(stderr, "Error: no se pudo formar un lote ejecutable.\n");
+            return 0;
         }
+        printf("Procesos activos: %lu, hilos utilizados: %d/%d\n",
+               (unsigned long)cantidad_lote,
+               hilos_usados,
+               configuracion->hilos);
 
         for (indice = 0; indice < cantidad_lote; indice++) {
             Proceso *proceso = &lote[indice];
 
-            printf("Procesador %lu ejecuta PID=%d (%s), quantum=%d, "
+            printf("Procesador %lu ejecuta PID=%d (%s), hilos=%d, quantum=%d, "
                    "iteraciones restantes=%d\n",
                    (unsigned long)(indice + 1),
                    proceso->id,
                    proceso->contador_programa,
+                   proceso->hilos,
                    proceso->quantum,
                    proceso->iteraciones);
 

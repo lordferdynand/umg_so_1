@@ -1,0 +1,6 @@
+Procesadores 2
+Hilos 4
+
+1 | 0 | Analisis | 3 | 1000 | 3 | 5 | 1
+2 | 0 | Render | 5 | 2000 | 3 | 7 | 1
+3 | 0 | Musica | 2 | 500 | 1 | 2 | 2
