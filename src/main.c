@@ -133,13 +133,102 @@ static int cargar_procesos(FILE *archivo,
     return 1;
 }
 
+static void mostrar_cola(const ColaProcesos *cola)
+{
+    const NodoProceso *actual = cola->frente;
+
+    printf("Cola: ");
+    if (actual == NULL) {
+        printf("(vacia)");
+    }
+
+    while (actual != NULL) {
+        printf("P%d", actual->proceso.id);
+        actual = actual->siguiente;
+        if (actual != NULL) {
+            printf(" -> ");
+        }
+    }
+    printf("\n");
+}
+
+static int simular(const ConfiguracionSistema *configuracion, ColaProcesos *cola)
+{
+    long long tiempo_cpu = 0;
+    int ciclo = 0;
+
+    while (!cola_esta_vacia(cola)) {
+        Proceso *lote;
+        size_t cantidad_lote = cola->cantidad;
+        size_t indice;
+
+        if (cantidad_lote > (size_t)configuracion->procesadores) {
+            cantidad_lote = (size_t)configuracion->procesadores;
+        }
+
+        lote = malloc(cantidad_lote * sizeof(*lote));
+        if (lote == NULL) {
+            fprintf(stderr, "Error: no se pudo reservar memoria para un ciclo.\n");
+            return 0;
+        }
+
+        ciclo++;
+        printf("\n--- Ciclo %d ---\n", ciclo);
+        mostrar_cola(cola);
+
+        for (indice = 0; indice < cantidad_lote; indice++) {
+            if (!cola_desencolar(cola, &lote[indice])) {
+                free(lote);
+                fprintf(stderr, "Error interno: no se pudo retirar un proceso.\n");
+                return 0;
+            }
+        }
+
+        for (indice = 0; indice < cantidad_lote; indice++) {
+            Proceso *proceso = &lote[indice];
+
+            printf("Procesador %lu ejecuta PID=%d (%s), quantum=%d, "
+                   "iteraciones restantes=%d\n",
+                   (unsigned long)(indice + 1),
+                   proceso->id,
+                   proceso->contador_programa,
+                   proceso->quantum,
+                   proceso->iteraciones);
+
+            tiempo_cpu += proceso->quantum;
+            proceso->iteraciones--;
+
+            if (proceso->iteraciones > 0) {
+                if (!cola_encolar(cola, *proceso)) {
+                    free(lote);
+                    fprintf(stderr, "Error: no se pudo reencolar el proceso.\n");
+                    return 0;
+                }
+                printf("PID=%d termina su quantum y vuelve a la cola "
+                       "(iteraciones restantes=%d).\n",
+                       proceso->id,
+                       proceso->iteraciones);
+            } else {
+                printf("PID=%d finaliza.\n", proceso->id);
+            }
+        }
+
+        free(lote);
+        printf("Tiempo de CPU simulado acumulado: %lld pulsos\n", tiempo_cpu);
+        mostrar_cola(cola);
+    }
+
+    printf("\nSimulacion finalizada: no hay procesos pendientes.\n");
+    printf("Tiempo total de CPU simulado: %lld pulsos\n", tiempo_cpu);
+    return 1;
+}
+
 int main(int argc, char *argv[])
 {
     const char *nombre_archivo = argc == 2 ? argv[1] : "config.txt";
     ConfiguracionSistema configuracion;
     ColaProcesos cola;
     FILE *archivo;
-    Proceso proceso;
 
     if (argc > 2) {
         fprintf(stderr, "Uso: %s [archivo_configuracion]\n", argv[0]);
@@ -168,17 +257,9 @@ int main(int argc, char *argv[])
            configuracion.hilos);
     printf("Procesos cargados: %lu\n", (unsigned long)cola.cantidad);
 
-    while (cola_desencolar(&cola, &proceso)) {
-        printf("PID=%d, padre=%d, programa=%s, registros=%d, bytes=%d, "
-               "hilos=%d, quantum=%d, iteraciones=%d\n",
-               proceso.id,
-               proceso.id_padre,
-               proceso.contador_programa,
-               proceso.registros,
-               proceso.tamano_bytes,
-               proceso.hilos,
-               proceso.quantum,
-               proceso.iteraciones);
+    if (!simular(&configuracion, &cola)) {
+        cola_vaciar(&cola);
+        return EXIT_FAILURE;
     }
 
     return EXIT_SUCCESS;
