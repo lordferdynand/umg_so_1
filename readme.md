@@ -2,13 +2,7 @@ Proyecto
 
 Simulación de Ejecución de Procesos en un Sistema Operativo
 
- 
 
-Curso: Sistemas Operativos  I
-Profesor: Juan Carlos Monterroso  
-Semestre: 2do.  
-Modalidad: Individual  
-Fecha de entrega: 5 octubre.  
 Objetivo General: Desarrollar un programa en lenguaje C que simule la ejecución de procesos a nivel de sistema operativo, utilizando un archivo de entrada para configurar el sistema y los procesos, aplicando conceptos de manejo de colas, planificación y simulación de recursos.  
 
  
