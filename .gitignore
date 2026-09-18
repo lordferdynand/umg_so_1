@@ -1,0 +1,10 @@
+# Artefactos de compilacion (MSVC, GCC, MinGW)
+*.obj
+*.o
+*.exe
+*.ilk
+*.pdb
+*.out
+
+# Archivos temporales de editores
+*.tmp

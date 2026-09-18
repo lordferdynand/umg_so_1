@@ -3,9 +3,16 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <time.h>
+#endif
+
 #include "cola.h"
 
 #define MAX_LINEA 256
+#define RETARDO_CICLO_MS_DEFECTO 500
 
 typedef struct {
     int procesadores;
@@ -133,6 +140,23 @@ static int cargar_procesos(FILE *archivo,
     return 1;
 }
 
+static void esperar_milisegundos(int milisegundos)
+{
+    if (milisegundos <= 0) {
+        return;
+    }
+
+#ifdef _WIN32
+    Sleep((DWORD)milisegundos);
+#else
+    struct timespec solicitado;
+
+    solicitado.tv_sec = milisegundos / 1000;
+    solicitado.tv_nsec = (milisegundos % 1000) * 1000000L;
+    nanosleep(&solicitado, NULL);
+#endif
+}
+
 static void mostrar_cola(const ColaProcesos *cola)
 {
     const NodoProceso *actual = cola->frente;
@@ -192,7 +216,7 @@ static int seleccionar_lote(const ConfiguracionSistema *configuracion,
     return seleccionados > 0;
 }
 
-static int simular(const ConfiguracionSistema *configuracion, ColaProcesos *cola)
+static int simular(const ConfiguracionSistema *configuracion, ColaProcesos *cola, int retardo_ms)
 {
     long long tiempo_cpu = 0;
     int ciclo = 0;
@@ -261,6 +285,7 @@ static int simular(const ConfiguracionSistema *configuracion, ColaProcesos *cola
         free(lote);
         printf("Tiempo de CPU simulado acumulado: %lld pulsos\n", tiempo_cpu);
         mostrar_cola(cola);
+        esperar_milisegundos(retardo_ms);
     }
 
     printf("\nSimulacion finalizada: no hay procesos pendientes.\n");
@@ -270,14 +295,27 @@ static int simular(const ConfiguracionSistema *configuracion, ColaProcesos *cola
 
 int main(int argc, char *argv[])
 {
-    const char *nombre_archivo = argc == 2 ? argv[1] : "config.txt";
+    const char *nombre_archivo = argc >= 2 ? argv[1] : "config.txt";
+    int retardo_ms = RETARDO_CICLO_MS_DEFECTO;
     ConfiguracionSistema configuracion;
     ColaProcesos cola;
     FILE *archivo;
 
-    if (argc > 2) {
-        fprintf(stderr, "Uso: %s [archivo_configuracion]\n", argv[0]);
+    if (argc > 3) {
+        fprintf(stderr,
+                "Uso: %s [archivo_configuracion] [retardo_ms]\n",
+                argv[0]);
         return EXIT_FAILURE;
+    }
+
+    if (argc == 3) {
+        char extra;
+
+        if (sscanf(argv[2], "%d%c", &retardo_ms, &extra) != 1 || retardo_ms < 0) {
+            fprintf(stderr,
+                    "Error: retardo_ms debe ser un entero mayor o igual a cero.\n");
+            return EXIT_FAILURE;
+        }
     }
 
     archivo = fopen(nombre_archivo, "r");
@@ -301,8 +339,9 @@ int main(int argc, char *argv[])
            configuracion.procesadores,
            configuracion.hilos);
     printf("Procesos cargados: %lu\n", (unsigned long)cola.cantidad);
+    printf("Retardo entre ciclos: %d ms\n", retardo_ms);
 
-    if (!simular(&configuracion, &cola)) {
+    if (!simular(&configuracion, &cola, retardo_ms)) {
         cola_vaciar(&cola);
         return EXIT_FAILURE;
     }
